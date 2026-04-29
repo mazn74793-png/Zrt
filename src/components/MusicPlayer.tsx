@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import ReactPlayer from 'react-player/youtube';
+import ReactPlayer from 'react-player';
 import { 
   Play, 
   Pause, 
@@ -33,6 +33,8 @@ export const MusicPlayer: React.FC = () => {
   const [isMuted, setIsMuted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const playerRef = useRef<any>(null);
+
+  const PlayerComponent = (ReactPlayer as any).default || ReactPlayer;
 
   if (!currentSong) return null;
 
@@ -77,8 +79,8 @@ export const MusicPlayer: React.FC = () => {
       animate={{ y: 0 }}
       className="fixed bottom-0 left-0 right-0 h-24 glass border-t border-neon-cyan/30 flex items-center px-6 z-50 shadow-[0_-10px_40px_rgba(0,245,255,0.15)]"
     >
-      <div className="fixed -top-[1000px] -left-[1000px] w-[300px] h-[300px] pointer-events-none overflow-hidden">
-        <ReactPlayer
+      <div className="fixed bottom-24 right-4 w-48 h-28 opacity-0 pointer-events-none overflow-hidden rounded-lg">
+        <PlayerComponent
           key={currentSong.id}
           ref={playerRef}
           url={currentSong.audioUrl}
@@ -97,7 +99,8 @@ export const MusicPlayer: React.FC = () => {
                 autoplay: 1, 
                 controls: 0,
                 modestbranding: 1,
-                rel: 0
+                rel: 0,
+                origin: window.location.origin
               }
             }
           }}
