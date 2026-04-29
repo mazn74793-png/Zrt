@@ -53,15 +53,14 @@ export const MusicPlayer: React.FC = () => {
     return url.replace('music.youtube.com', 'www.youtube.com');
   };
 
-  // Sync volume manually when ready or when volume changes
+  // Improved volume sync
   useEffect(() => {
     const syncInternal = () => {
-      if (isReady && playerRef.current) {
+      if (playerRef.current) {
         try {
           const internal = playerRef.current.getInternalPlayer();
           if (internal) {
             if (typeof internal.setVolume === 'function') {
-              // YouTube uses 0-100
               internal.setVolume(isMuted ? 0 : volume * 100);
             } else if ('volume' in internal) {
               internal.volume = isMuted ? 0 : volume;
@@ -74,33 +73,26 @@ export const MusicPlayer: React.FC = () => {
     syncInternal();
     const timeout = setTimeout(syncInternal, 500);
     return () => clearTimeout(timeout);
-  }, [isReady, volume, isMuted, playbackState]);
+  }, [isReady, volume, isMuted]);
 
-  // Sync playback state manually
+  // Playback state sync with small retry
   useEffect(() => {
     let timeout: any;
     if (isReady && playerRef.current && playbackState === 'playing') {
       timeout = setTimeout(() => {
         try {
           const internal = playerRef.current.getInternalPlayer();
-          if (internal) {
-            // Force volume again on play start
-            if (typeof internal.setVolume === 'function') {
-              internal.setVolume(isMuted ? 0 : volume * 100);
-            }
-            
-            if (typeof internal.playVideo === 'function') {
-               const state = internal.getPlayerState?.();
-               if (state !== 1 && state !== 3) {
-                 internal.playVideo();
-               }
-            }
+          if (internal && typeof internal.playVideo === 'function') {
+             const state = internal.getPlayerState?.();
+             if (state !== 1 && state !== 3) {
+               internal.playVideo();
+             }
           }
         } catch (err) {}
-      }, 300);
+      }, 500);
     }
     return () => clearTimeout(timeout);
-  }, [isReady, playbackState, currentSong?.id, volume, isMuted]);
+  }, [isReady, playbackState, currentSong?.id]);
 
   if (!currentSong) return null;
 
@@ -154,16 +146,8 @@ export const MusicPlayer: React.FC = () => {
       animate={{ y: 0 }}
       className="fixed bottom-0 left-0 right-0 h-24 glass border-t border-neon-cyan/30 flex items-center px-6 z-50 shadow-[0_-10px_40px_rgba(0,245,255,0.15)]"
     >
-      {/* Background Signal Processor */}
-      <div 
-        className="opacity-0 pointer-events-none absolute"
-        style={{ 
-          width: '200px', 
-          height: '150px', 
-          left: '-2000px',
-          top: '0'
-        }}
-      >
+      {/* Active Signal Processor - Integrated to avoid throttling */}
+      <div className="absolute w-2 h-2 overflow-hidden opacity-0 pointer-events-none left-6 top-1/2 -translate-y-1/2">
         <Player
           ref={playerRef}
           url={getCleanUrl(currentSong.audioUrl)}
@@ -171,7 +155,6 @@ export const MusicPlayer: React.FC = () => {
           volume={volume}
           muted={isMuted}
           onProgress={handleProgress}
-          onDuration={handleDuration}
           onReady={() => {
             console.log("Audio Signal Locked");
             setIsReady(true);
@@ -193,17 +176,20 @@ export const MusicPlayer: React.FC = () => {
           onError={handleError}
           width="100%"
           height="100%"
-          playsinline
+          playsInline={true}
           config={{
             youtube: {
-              enablejsapi: 1,
-              origin: window.location.origin,
-              rel: 0,
-              cc_load_policy: 0,
-              iv_load_policy: 3,
-              disablekb: 1
+              playerVars: {
+                autoplay: 1,
+                controls: 0,
+                modestbranding: 1,
+                rel: 0,
+                showinfo: 0,
+                enablejsapi: 1,
+                origin: window.location.origin
+              }
             }
-          } as any}
+          }}
         />
       </div>
 
