@@ -16,6 +16,19 @@ import { usePlayer } from '../context/PlayerContext';
 import { formatTime } from '../lib/utils';
 import { motion } from 'motion/react';
 
+const Player = ReactPlayer as any;
+
+const CustomWrapper = React.forwardRef(({ children, ...props }: any, ref: any) => {
+  const cleanProps: any = {};
+  Object.keys(props).forEach(key => {
+    // React 19 is extremely strict about any prop starting with 'on'
+    if (!/^on[A-Z]/.test(key) && !/^on[a-z]/.test(key)) {
+      cleanProps[key] = props[key];
+    }
+  });
+  return <div {...cleanProps} ref={ref}>{children}</div>;
+});
+
 export const MusicPlayer: React.FC = () => {
   const { 
     currentSong, 
@@ -39,21 +52,71 @@ export const MusicPlayer: React.FC = () => {
     if (currentSong) {
       setIsReady(false);
       setError(null);
+      setDur(0);
+      setPlayed(0);
+      setProgress(0);
     }
   }, [currentSong?.id]);
 
-  if (!currentSong) return null;
+  const getCleanUrl = (url: string) => {
+    if (!url) return '';
+    return url.replace('music.youtube.com', 'www.youtube.com');
+  };
 
-  // Use a stable key for the player to ensure it remounts on song change
-  const playerKey = currentSong.id;
-  const Player = ReactPlayer as any;
+  // Sync volume manually when ready or when volume changes
+  useEffect(() => {
+    const syncInternal = () => {
+      if (isReady && playerRef.current) {
+        try {
+          const internal = playerRef.current.getInternalPlayer();
+          if (internal) {
+            if (typeof internal.setVolume === 'function') {
+              internal.setVolume(isMuted ? 0 : volume * 100);
+            } else if (internal && 'volume' in internal) {
+              internal.volume = isMuted ? 0 : volume;
+            }
+          }
+        } catch (err) {
+          // Transitions
+        }
+      }
+    };
+
+    syncInternal();
+    // Brute force retry for initial load
+    const timeout = setTimeout(syncInternal, 1000);
+    return () => clearTimeout(timeout);
+  }, [isReady, volume, isMuted, playbackState]);
+
+  // Sync playback state manually as a backup to the prop
+  useEffect(() => {
+    let timeout: any;
+    if (isReady && playerRef.current && playbackState === 'playing') {
+      // Small delay to prevent "interrupted by pause" when switching tracks rapidly
+      timeout = setTimeout(() => {
+        try {
+          const internal = playerRef.current.getInternalPlayer();
+          if (internal && typeof internal.playVideo === 'function') {
+             const state = internal.getPlayerState?.();
+             if (state !== 1 && state !== 3) {
+               internal.playVideo();
+             }
+          }
+        } catch (err) {}
+      }, 150);
+    }
+    return () => clearTimeout(timeout);
+  }, [isReady, playbackState, currentSong?.id]);
+
+  if (!currentSong) return null;
 
   const handlePlayPause = () => {
     setPlaybackState(playbackState === 'playing' ? 'paused' : 'playing');
   };
 
   const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setPlayed(parseFloat(e.target.value));
+    const val = parseFloat(e.target.value);
+    setPlayed(val);
   };
 
   const handleSeekMouseDown = () => {
@@ -62,58 +125,33 @@ export const MusicPlayer: React.FC = () => {
 
   const handleSeekMouseUp = (e: any) => {
     setSeeking(false);
-    playerRef.current?.seekTo(parseFloat(e.target.value));
+    const val = parseFloat(e.target.value);
+    playerRef.current?.seekTo(val);
   };
 
   const handleProgress = (state: any) => {
     if (!seeking) {
       setPlayed(state.played);
       setProgress(state.playedSeconds);
+      
+      // Fallback for duration if onDuration failed/was ignored
+      if (dur === 0 && playerRef.current && typeof playerRef.current.getDuration === 'function') {
+        const d = playerRef.current.getDuration();
+        if (d > 0) setDur(d);
+      }
     }
   };
 
   const handleDuration = (duration: number) => {
-    console.log('Track Duration Loaded:', duration);
-    setDur(duration);
-    setError(null);
-    if (duration > 0) setIsReady(true);
-  };
-
-  const handleReady = () => {
-    console.log('Signal Linked Successfully');
-    setIsReady(true);
-    setError(null);
-    
-    // Safety check for duration
-    if (playerRef.current) {
-      const duration = playerRef.current.getDuration();
-      if (duration > 0) setDur(duration);
+    if (duration > 0) {
+      setDur(duration);
     }
-  };
-
-  const handlePlay = () => {
-    console.log('Audio Stream Active');
-    setIsReady(true);
-    setError(null);
   };
 
   const handleError = (e: any) => {
-    console.error('Playback Tech Error:', e);
-    // 150/101 are "embedding restricted" errors
-    if (playbackState === 'playing') {
-      setError('Signal restricted by source');
-      setIsReady(false);
-    }
-  };
-
-  // Build the effective URL - Standard YouTube is more reliable for iframe embedding
-  const getEmbedUrl = (url: string) => {
-    if (!url) return '';
-    // Standardize to www.youtube.com for maximum compatibility
-    if (url.includes('music.youtube.com')) {
-      return url.replace('music.youtube.com', 'www.youtube.com');
-    }
-    return url;
+    console.error('Playback Error:', e);
+    setError('Playback restricted by source');
+    setIsReady(false);
   };
 
   return (
@@ -122,46 +160,68 @@ export const MusicPlayer: React.FC = () => {
       animate={{ y: 0 }}
       className="fixed bottom-0 left-0 right-0 h-24 glass border-t border-neon-cyan/30 flex items-center px-6 z-50 shadow-[0_-10px_40px_rgba(0,245,255,0.15)]"
     >
-      {/* Hidden but semi-visible player container - Necessary size to bypass browser autoplay/sound blocks */}
-      <div className="fixed bottom-0 right-0 w-[200px] h-[200px] pointer-events-none opacity-[0.001] z-[-1] overflow-hidden">
+      <div 
+        style={{ 
+          position: 'fixed', 
+          bottom: '2px', 
+          right: '2px', 
+          width: '1px', 
+          height: '1px', 
+          opacity: 0.1,
+          pointerEvents: 'none',
+          zIndex: 9999,
+          overflow: 'hidden'
+        }}
+        id="hidden-player-signal"
+      >
         <Player
           ref={playerRef}
-          url={getEmbedUrl(currentSong.audioUrl)}
+          wrapper={CustomWrapper}
+          url={getCleanUrl(currentSong.audioUrl)}
           playing={playbackState === 'playing'}
-          volume={isMuted ? 0 : volume}
+          volume={volume}
+          muted={isMuted}
           onProgress={handleProgress}
-          onDuration={handleDuration}
-          onReady={handleReady}
-          onStart={handlePlay}
-          onBuffer={() => setIsReady(false)}
-          onBufferEnd={() => setIsReady(true)}
-          onEnded={() => {
-            setPlaybackState('stopped');
-            setPlayed(0);
-            setProgress(0);
-            setIsReady(false);
+          onReady={() => {
+            console.log("Audio Signal Locked");
+            setIsReady(true);
+            setError(null);
+            // Sync initial state
+            if (playerRef.current && typeof playerRef.current.getDuration === 'function') {
+               const d = playerRef.current.getDuration();
+               if (d > 0) setDur(d);
+            }
           }}
-          onError={handleError}
+          onStart={() => {
+            console.log("Playback Started");
+            setIsReady(true);
+            if (playerRef.current && typeof playerRef.current.getDuration === 'function') {
+               const d = playerRef.current.getDuration();
+               if (d > 0) setDur(d);
+            }
+          }}
+          onEnded={() => setPlaybackState('stopped')}
+          onError={(err: any) => {
+            console.error("Playback Error State:", err);
+            handleError(err);
+          }}
           width="100%"
           height="100%"
-          playsinline
-          controls={false}
+          playsInline={true}
           config={{
             youtube: {
               playerVars: {
-                rel: 0,
-                iv_load_policy: 3,
-                enablejsapi: 1,
-                origin: window.location.origin,
                 autoplay: 1,
-                mute: 0,
                 controls: 0,
                 modestbranding: 1,
+                rel: 0,
                 showinfo: 0,
-                autohide: 1
+                origin: window.location.origin,
+                enablejsapi: 1,
+                widget_referrer: window.location.origin
               }
             }
-          }}
+          } as any}
         />
       </div>
 
