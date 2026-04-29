@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import ReactPlayer from 'react-player';
 import { 
   Play, 
@@ -32,9 +32,21 @@ export const MusicPlayer: React.FC = () => {
   const [seeking, setSeeking] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isReady, setIsReady] = useState(false);
   const playerRef = useRef<any>(null);
 
+  useEffect(() => {
+    if (currentSong) {
+      setIsReady(false);
+      setError(null);
+    }
+  }, [currentSong?.id]);
+
   if (!currentSong) return null;
+
+  // Use a stable key for the player to ensure it remounts on song change
+  const playerKey = currentSong.id;
+  const Player = ReactPlayer as any;
 
   const handlePlayPause = () => {
     setPlaybackState(playbackState === 'playing' ? 'paused' : 'playing');
@@ -64,19 +76,44 @@ export const MusicPlayer: React.FC = () => {
     console.log('Track Duration Loaded:', duration);
     setDur(duration);
     setError(null);
+    if (duration > 0) setIsReady(true);
   };
 
   const handleReady = () => {
-    console.log('Player Ready');
+    console.log('Signal Linked Successfully');
+    setIsReady(true);
+    setError(null);
+    
+    // Safety check for duration
     if (playerRef.current) {
       const duration = playerRef.current.getDuration();
-      if (duration) setDur(duration);
+      if (duration > 0) setDur(duration);
     }
   };
 
+  const handlePlay = () => {
+    console.log('Audio Stream Active');
+    setIsReady(true);
+    setError(null);
+  };
+
   const handleError = (e: any) => {
-    console.error('Core Playback Error:', e);
-    setError('Signal Blocked by Host');
+    console.error('Playback Tech Error:', e);
+    // 150/101 are "embedding restricted" errors
+    if (playbackState === 'playing') {
+      setError('Signal restricted by source');
+      setIsReady(false);
+    }
+  };
+
+  // Build the effective URL - Standard YouTube is more reliable for iframe embedding
+  const getEmbedUrl = (url: string) => {
+    if (!url) return '';
+    // Standardize to www.youtube.com for maximum compatibility
+    if (url.includes('music.youtube.com')) {
+      return url.replace('music.youtube.com', 'www.youtube.com');
+    }
+    return url;
   };
 
   return (
@@ -85,32 +122,43 @@ export const MusicPlayer: React.FC = () => {
       animate={{ y: 0 }}
       className="fixed bottom-0 left-0 right-0 h-24 glass border-t border-neon-cyan/30 flex items-center px-6 z-50 shadow-[0_-10px_40px_rgba(0,245,255,0.15)]"
     >
-      {/* Container for the actual video player - must be somewhat "visible" to bypass autoplay blocks */}
-      <div className="fixed bottom-24 right-4 w-[200px] h-[120px] pointer-events-none opacity-0 overflow-hidden rounded-lg shadow-2xl border border-white/10">
-        <ReactPlayer
-          key={currentSong.id}
+      {/* Hidden but semi-visible player container - Necessary size to bypass browser autoplay/sound blocks */}
+      <div className="fixed bottom-0 right-0 w-[200px] h-[200px] pointer-events-none opacity-[0.001] z-[-1] overflow-hidden">
+        <Player
           ref={playerRef}
-          url={currentSong.audioUrl}
+          url={getEmbedUrl(currentSong.audioUrl)}
           playing={playbackState === 'playing'}
           volume={isMuted ? 0 : volume}
           onProgress={handleProgress}
-          onReady={handleReady}
-          onStart={() => console.log('Playback Started')}
           onDuration={handleDuration}
-          onEnded={() => setPlaybackState('stopped')}
+          onReady={handleReady}
+          onStart={handlePlay}
+          onBuffer={() => setIsReady(false)}
+          onBufferEnd={() => setIsReady(true)}
+          onEnded={() => {
+            setPlaybackState('stopped');
+            setPlayed(0);
+            setProgress(0);
+            setIsReady(false);
+          }}
           onError={handleError}
           width="100%"
           height="100%"
           playsinline
+          controls={false}
           config={{
             youtube: {
-              playerVars: { 
-                autoplay: 1, 
+              playerVars: {
+                rel: 0,
+                iv_load_policy: 3,
+                enablejsapi: 1,
+                origin: window.location.origin,
+                autoplay: 1,
+                mute: 0,
                 controls: 0,
                 modestbranding: 1,
-                rel: 0,
                 showinfo: 0,
-                origin: window.location.origin
+                autohide: 1
               }
             }
           }}
@@ -182,8 +230,21 @@ export const MusicPlayer: React.FC = () => {
         </div>
       </div>
 
-      {/* Volume & Extras */}
-      <div className="w-1/4 flex items-center justify-end gap-4">
+      {/* Volume & Extras / Status */}
+      <div className="w-1/4 flex items-center justify-end gap-6">
+        <div className="flex flex-col items-end gap-1 px-4 border-r border-white/10">
+          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-mono">
+             <div className={`w-1.5 h-1.5 rounded-full ${isReady ? 'bg-neon-cyan shadow-[0_0_8px_#00f5ff]' : 'bg-white/20'}`} />
+             <span className={isReady ? 'text-neon-cyan' : 'text-white/30'}>{isReady ? 'Signal: Linked' : 'Signal: Offline'}</span>
+          </div>
+          {error && (
+            <div className="flex items-center gap-1 text-[9px] text-red-500 font-mono uppercase">
+              <AlertTriangle size={10} />
+              <span>{error}</span>
+            </div>
+          )}
+        </div>
+
         <div className="flex items-center gap-2 group">
           <button 
             onClick={() => setIsMuted(!isMuted)}
@@ -201,7 +262,11 @@ export const MusicPlayer: React.FC = () => {
             className="w-24 accent-neon-cyan h-1"
           />
         </div>
-        <button className="text-white/60 hover:text-neon-violet">
+        <button 
+          onClick={() => window.open(currentSong.audioUrl, '_blank')}
+          className="text-white/60 hover:text-neon-violet"
+          title="Open Source Signal"
+        >
           <Maximize2 size={16} />
         </button>
       </div>
