@@ -34,8 +34,6 @@ export const MusicPlayer: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const playerRef = useRef<any>(null);
 
-  const PlayerComponent = (ReactPlayer as any).default || ReactPlayer;
-
   if (!currentSong) return null;
 
   const handlePlayPause = () => {
@@ -68,6 +66,14 @@ export const MusicPlayer: React.FC = () => {
     setError(null);
   };
 
+  const handleReady = () => {
+    console.log('Player Ready');
+    if (playerRef.current) {
+      const duration = playerRef.current.getDuration();
+      if (duration) setDur(duration);
+    }
+  };
+
   const handleError = (e: any) => {
     console.error('Core Playback Error:', e);
     setError('Signal Blocked by Host');
@@ -79,15 +85,18 @@ export const MusicPlayer: React.FC = () => {
       animate={{ y: 0 }}
       className="fixed bottom-0 left-0 right-0 h-24 glass border-t border-neon-cyan/30 flex items-center px-6 z-50 shadow-[0_-10px_40px_rgba(0,245,255,0.15)]"
     >
-      <div className="fixed bottom-24 right-4 w-48 h-28 opacity-0 pointer-events-none overflow-hidden rounded-lg">
-        <PlayerComponent
+      {/* Container for the actual video player - must be somewhat "visible" to bypass autoplay blocks */}
+      <div className="fixed bottom-24 right-4 w-[200px] h-[120px] pointer-events-none opacity-0 overflow-hidden rounded-lg shadow-2xl border border-white/10">
+        <ReactPlayer
           key={currentSong.id}
           ref={playerRef}
           url={currentSong.audioUrl}
           playing={playbackState === 'playing'}
           volume={isMuted ? 0 : volume}
           onProgress={handleProgress}
-          onReady={() => handleDuration(playerRef.current?.getDuration() || 0)}
+          onReady={handleReady}
+          onStart={() => console.log('Playback Started')}
+          onDuration={handleDuration}
           onEnded={() => setPlaybackState('stopped')}
           onError={handleError}
           width="100%"
@@ -100,6 +109,7 @@ export const MusicPlayer: React.FC = () => {
                 controls: 0,
                 modestbranding: 1,
                 rel: 0,
+                showinfo: 0,
                 origin: window.location.origin
               }
             }
