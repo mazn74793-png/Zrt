@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Syncopation", ui-sans-serif, system-ui, sans-serif;
+  --color-neon-cyan: #00F5FF;
+  --color-neon-violet: #9D00FF;
+  --color-deep-black: #050505;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-deep-black);
+    color: white;
+    font-family: var(--font-sans);
+  }
+}
+
+@layer components {
+  .glass {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .neon-border-cyan {
+    border: 1px solid #00F5FF;
+    box-shadow: 0 0 10px rgba(0, 245, 255, 0.3), inset 0 0 5px rgba(0, 245, 255, 0.1);
+  }
+
+  .neon-border-violet {
+    border: 1px solid #9D00FF;
+    box-shadow: 0 0 10px rgba(157, 0, 255, 0.3), inset 0 0 5px rgba(157, 0, 255, 0.1);
+  }
+
+  .neon-hover-cyan:hover {
+    box-shadow: 0 0 15px rgba(0, 245, 255, 0.6);
+    filter: brightness(1.2);
+  }
+
+  .glow-cyan {
+    filter: drop-shadow(0 0 8px rgba(0, 245, 255, 0.8));
+  }
+
+  .glow-violet {
+    filter: drop-shadow(0 0 8px rgba(157, 0, 255, 0.8));
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #050505;
+}
+::-webkit-scrollbar-thumb {
+  background: #222;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #00F5FF;
+}
+
+@font-face {
+  font-family: 'Syncopation';
+  src: url('https://fonts.cdnfonts.com/s/18237/Syncopate-Regular.woff') format('woff');
+}
+

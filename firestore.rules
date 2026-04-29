@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global Helpers
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function isAdmin() { return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // 1. Song Validation
+    function isValidSong(data) {
+      return data.keys().hasAll(['title', 'artist', 'audioUrl', 'coverUrl', 'uploaderId', 'category', 'isLocal', 'viewCount', 'createdAt'])
+        && data.title is string && data.title.size() <= 200
+        && data.artist is string && data.artist.size() <= 200
+        && data.audioUrl is string && data.audioUrl.size() <= 1000
+        && data.coverUrl is string && data.coverUrl.size() <= 1000
+        && data.uploaderId == request.auth.uid
+        && data.viewCount is number
+        && data.isLocal is bool;
+    }
+
+    match /songs/{songId} {
+      allow list: if true; // Public discovery
+      allow get: if true;
+      allow create: if isSignedIn() && isValidSong(incoming()) && incoming().createdAt == request.time;
+      allow update: if isSignedIn() && (
+        // Action: Increment View Count
+        (incoming().diff(existing()).affectedKeys().hasOnly(['viewCount']) && incoming().viewCount == existing().viewCount + 1)
+        || (isOwner(existing().uploaderId) && isValidSong(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'artist', 'category', 'coverUrl']))
+        || isAdmin()
+      );
+      allow delete: if isOwner(existing().uploaderId) || isAdmin();
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow create, update: if isOwner(userId) && incoming().uid == userId;
+    }
+
+    match /admins/{adminId} {
+      allow get: if isOwner(adminId);
+      allow list, write: if false; // System managed or manually set in console
+    }
+  }
+}

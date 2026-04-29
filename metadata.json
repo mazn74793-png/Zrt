@@ -1,0 +1,6 @@
+{
+  "name": "NeonVibe Music",
+  "description": "A high-end, cyberpunk-themed music streaming app featuring global search and local community uploads.",
+  "requestFramePermissions": ["autoplay"],
+  "majorCapabilities": []
+}

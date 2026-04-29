@@ -1,0 +1,49 @@
+{
+  "entities": {
+    "Song": {
+      "title": "Song",
+      "description": "Metadata for a music track.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "artist": { "type": "string" },
+        "audioUrl": { "type": "string", "format": "uri" },
+        "coverUrl": { "type": "string", "format": "uri" },
+        "category": { "type": "string" },
+        "uploaderId": { "type": "string" },
+        "uploaderName": { "type": "string" },
+        "viewCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "duration": { "type": "number" },
+        "isLocal": { "type": "boolean" }
+      },
+      "required": ["title", "artist", "audioUrl", "uploaderId"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile information.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string", "format": "uri" },
+        "isAdmin": { "type": "boolean" }
+      }
+    }
+  },
+  "firestore": {
+    "/songs/{songId}": {
+      "schema": "Song",
+      "description": "Collection of all music tracks."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and privileges."
+    },
+    "/admins/{adminId}": {
+      "schema": { "type": "object", "properties": { "uid": { "type": "string" } } },
+      "description": "Trusted admin whitelist."
+    }
+  }
+}
