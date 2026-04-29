@@ -16,18 +16,8 @@ import { usePlayer } from '../context/PlayerContext';
 import { formatTime } from '../lib/utils';
 import { motion } from 'motion/react';
 
-const Player = ReactPlayer as any;
 
-const CustomWrapper = React.forwardRef(({ children, ...props }: any, ref: any) => {
-  const cleanProps: any = {};
-  Object.keys(props).forEach(key => {
-    // React 19 is extremely strict about any prop starting with 'on'
-    if (!/^on[A-Z]/.test(key) && !/^on[a-z]/.test(key)) {
-      cleanProps[key] = props[key];
-    }
-  });
-  return <div {...cleanProps} ref={ref}>{children}</div>;
-});
+const Player = ReactPlayer as any;
 
 export const MusicPlayer: React.FC = () => {
   const { 
@@ -71,42 +61,46 @@ export const MusicPlayer: React.FC = () => {
           const internal = playerRef.current.getInternalPlayer();
           if (internal) {
             if (typeof internal.setVolume === 'function') {
+              // YouTube uses 0-100
               internal.setVolume(isMuted ? 0 : volume * 100);
-            } else if (internal && 'volume' in internal) {
+            } else if ('volume' in internal) {
               internal.volume = isMuted ? 0 : volume;
             }
           }
-        } catch (err) {
-          // Transitions
-        }
+        } catch (err) {}
       }
     };
 
     syncInternal();
-    // Brute force retry for initial load
-    const timeout = setTimeout(syncInternal, 1000);
+    const timeout = setTimeout(syncInternal, 500);
     return () => clearTimeout(timeout);
   }, [isReady, volume, isMuted, playbackState]);
 
-  // Sync playback state manually as a backup to the prop
+  // Sync playback state manually
   useEffect(() => {
     let timeout: any;
     if (isReady && playerRef.current && playbackState === 'playing') {
-      // Small delay to prevent "interrupted by pause" when switching tracks rapidly
       timeout = setTimeout(() => {
         try {
           const internal = playerRef.current.getInternalPlayer();
-          if (internal && typeof internal.playVideo === 'function') {
-             const state = internal.getPlayerState?.();
-             if (state !== 1 && state !== 3) {
-               internal.playVideo();
-             }
+          if (internal) {
+            // Force volume again on play start
+            if (typeof internal.setVolume === 'function') {
+              internal.setVolume(isMuted ? 0 : volume * 100);
+            }
+            
+            if (typeof internal.playVideo === 'function') {
+               const state = internal.getPlayerState?.();
+               if (state !== 1 && state !== 3) {
+                 internal.playVideo();
+               }
+            }
           }
         } catch (err) {}
-      }, 150);
+      }, 300);
     }
     return () => clearTimeout(timeout);
-  }, [isReady, playbackState, currentSong?.id]);
+  }, [isReady, playbackState, currentSong?.id, volume, isMuted]);
 
   if (!currentSong) return null;
 
@@ -134,23 +128,23 @@ export const MusicPlayer: React.FC = () => {
       setPlayed(state.played);
       setProgress(state.playedSeconds);
       
-      // Fallback for duration if onDuration failed/was ignored
-      if (dur === 0 && playerRef.current && typeof playerRef.current.getDuration === 'function') {
-        const d = playerRef.current.getDuration();
-        if (d > 0) setDur(d);
+      // Secondary duration fallback
+      if (dur === 0 && playerRef.current) {
+        try {
+          const d = playerRef.current.getDuration();
+          if (d && d > 0) setDur(d);
+        } catch (e) {}
       }
     }
   };
 
   const handleDuration = (duration: number) => {
-    if (duration > 0) {
-      setDur(duration);
-    }
+    if (duration && duration > 0) setDur(duration);
   };
 
   const handleError = (e: any) => {
     console.error('Playback Error:', e);
-    setError('Playback restricted by source');
+    setError('Playback Error - Reconnecting...');
     setIsReady(false);
   };
 
@@ -160,66 +154,54 @@ export const MusicPlayer: React.FC = () => {
       animate={{ y: 0 }}
       className="fixed bottom-0 left-0 right-0 h-24 glass border-t border-neon-cyan/30 flex items-center px-6 z-50 shadow-[0_-10px_40px_rgba(0,245,255,0.15)]"
     >
+      {/* Background Signal Processor */}
       <div 
+        className="opacity-0 pointer-events-none absolute"
         style={{ 
-          position: 'fixed', 
-          bottom: '2px', 
-          right: '2px', 
-          width: '1px', 
-          height: '1px', 
-          opacity: 0.1,
-          pointerEvents: 'none',
-          zIndex: 9999,
-          overflow: 'hidden'
+          width: '200px', 
+          height: '150px', 
+          left: '-2000px',
+          top: '0'
         }}
-        id="hidden-player-signal"
       >
         <Player
           ref={playerRef}
-          wrapper={CustomWrapper}
           url={getCleanUrl(currentSong.audioUrl)}
           playing={playbackState === 'playing'}
           volume={volume}
           muted={isMuted}
           onProgress={handleProgress}
+          onDuration={handleDuration}
           onReady={() => {
             console.log("Audio Signal Locked");
             setIsReady(true);
             setError(null);
-            // Sync initial state
-            if (playerRef.current && typeof playerRef.current.getDuration === 'function') {
-               const d = playerRef.current.getDuration();
-               if (d > 0) setDur(d);
-            }
+            try {
+              const d = playerRef.current?.getDuration();
+              if (d && d > 0) setDur(d);
+            } catch(e) {}
           }}
           onStart={() => {
             console.log("Playback Started");
             setIsReady(true);
-            if (playerRef.current && typeof playerRef.current.getDuration === 'function') {
-               const d = playerRef.current.getDuration();
-               if (d > 0) setDur(d);
-            }
+            try {
+              const d = playerRef.current?.getDuration();
+              if (d && d > 0) setDur(d);
+            } catch(e) {}
           }}
           onEnded={() => setPlaybackState('stopped')}
-          onError={(err: any) => {
-            console.error("Playback Error State:", err);
-            handleError(err);
-          }}
+          onError={handleError}
           width="100%"
           height="100%"
-          playsInline={true}
+          playsinline
           config={{
             youtube: {
-              playerVars: {
-                autoplay: 1,
-                controls: 0,
-                modestbranding: 1,
-                rel: 0,
-                showinfo: 0,
-                origin: window.location.origin,
-                enablejsapi: 1,
-                widget_referrer: window.location.origin
-              }
+              enablejsapi: 1,
+              origin: window.location.origin,
+              rel: 0,
+              cc_load_policy: 0,
+              iv_load_policy: 3,
+              disablekb: 1
             }
           } as any}
         />
