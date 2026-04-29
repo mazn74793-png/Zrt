@@ -87,7 +87,7 @@ export const MusicPlayer: React.FC = () => {
           playing={playbackState === 'playing'}
           volume={isMuted ? 0 : volume}
           onProgress={handleProgress}
-          onDuration={handleDuration}
+          onReady={() => handleDuration(playerRef.current?.getDuration() || 0)}
           onEnded={() => setPlaybackState('stopped')}
           onError={handleError}
           width="100%"
